@@ -27,7 +27,7 @@ wos.SimpleGet(oid)
 wos.SimpleDelete(oid)
 wos.SimpleExists(oid)
 ```
-#### PUT STREAMS ####
+#### Put Stream ####
 ``` go 
 putstream := wos.CreatePutStream("POLICYNAME", INT, "METADATA")  //METADATA can be an empty string
 oid = putstream.PutString("DATA STRING")
@@ -40,7 +40,7 @@ if err != nil {
 }
 oid = putstream.PutFile(file)
 ```
-#### Get STREAMS ####
+#### Get Stream ####
 ##### Read Function #####
 ``` go 
 getstream := wos.CreateGetStream(oid)
@@ -63,7 +63,7 @@ getstream.Close()  //This is needed make sure to close if this Function is used
 getstream.ReadToFile("GetStreamMadeThisFile.txt", 0644)
 ```
 
- ##### LONG PUT GET DELETE FUNCTIONS #####
+ ##### Long Put Get Delete Functions #####
  ``` go 
 oid = wos.Put("POLICY NAME", "Data String", false, "", "",false)
 wos.Get(oid, false, false, -99, false, false, false, false)
