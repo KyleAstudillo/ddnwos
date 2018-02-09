@@ -44,7 +44,7 @@ oid = putstream.PutFile(file)
 ##### Read Function #####
 ``` go 
 getstream := wos.CreateGetStream(oid)
-getstream.Read(0) // Any Number Ranged Get not implemented yet
+data := getstream.Read(0) // Any Number Ranged Get not implemented yet
 getstream.Close()  //not needed on GetStream.Read Function 
 ```
 ##### get io.CloseReader Function #####
