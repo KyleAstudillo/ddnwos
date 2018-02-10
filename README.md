@@ -44,9 +44,17 @@ oid = putstream.PutFile(file)
 ##### Read Function #####
 ``` go 
 getstream := wos.CreateGetStream(oid)
-data := getstream.Read(0) // Any Number Ranged Get not implemented yet
+data := getstream.Read()
 getstream.Close()  //not needed on GetStream.Read Function 
 ```
+
+##### ReadRange Function #####
+``` go 
+getstream := wos.CreateGetStream(oid)
+data := getstream.ReadRange(START_INT, END_INT)
+getstream.Close()  //not needed on GetStream.Read Function 
+```
+
 ##### get io.CloseReader Function #####
 ``` go 
 reader := getstream.GetReader()
@@ -66,7 +74,7 @@ getstream.ReadToFile("GetStreamMadeThisFile.txt", 0644)
  ##### Long Put Get Delete Functions #####
  ``` go 
 oid = wos.Put("POLICY NAME", "Data String", false, "", "",false)
-wos.Get(oid, false, false, -99, false, false, false, false)
+wos.Get(oid, false, false, -99, -99 false, false, false, false)
 wos.Delete(oid , false, false, false)
 ```
 

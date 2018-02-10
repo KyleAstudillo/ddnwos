@@ -51,7 +51,7 @@ func (self *WosREST) SimplePut(policy string, data string) string{
 }
 
 func (self *WosREST) SimpleGet(oid string) string{
-	return self.Get(oid, false, false, -99, false, false, false, false)
+	return self.Get(oid, false, false, -99, -99, false, false, false, false)
 }
 
 func (self *WosREST) SimpleDelete(oid string){
@@ -72,6 +72,12 @@ func (self *WosREST) getHost() string{
 	}else{
 		self.index = nextIndex
 	}
+	//ping host
+	//if good host return
+	//else mark as bad host
+	//try another host
+	//if all hosts are bad
+	//    panic
 	return self.hosts_cycle[nextIndex]
 }
 
@@ -143,7 +149,8 @@ func (self *WosREST) Put(policy string,
 func (self * WosREST) Get(oid string,
 	buffered bool,
 	integrity_check bool,
-	zrange int,
+	rangeStart int,
+	rangeEnd int,
 	decmode bool,
 	head bool,
 	noddp bool,
@@ -160,8 +167,10 @@ func (self * WosREST) Get(oid string,
 	if (decmode){
 		req.Header.Add("x-ddn-distributed-protection", "true")
 	}
-	if (zrange > 0){
-		req.Header.Add("range", "bytes=" + string(zrange))
+	if (rangeStart > 0){
+		if(rangeEnd >= rangeStart){
+			req.Header.Add("range", fmt.Sprintf("bytes= %d-%d", rangeStart, rangeEnd))
+		}
 	}
 	if (noddp){
 		req.Header.Add("x-ddn-force-no-goa", "true")
@@ -359,9 +368,29 @@ func (self *GetStream) Getter (req *http.Request) io.ReadCloser {
 	return resp.Body
 }
 
-func (self *GetStream) Read (length int64) string {
+func (self *GetStream) Read () string {
 	scheme := self.parent.getscheme()
 	req, err := http.NewRequest("GET", scheme + "/cmd/get", nil)
+	if err != nil{
+		panic(err)
+	}
+	respBody := self.Getter(req)
+	defer self.resp.Body.Close()
+	body, err := ioutil.ReadAll(respBody)
+	if err != nil {
+		log.Fatalf("ERROR: %s", err)
+	}
+	return string(body)
+}
+
+func (self *GetStream) ReadRange (start int, end int) string {
+	scheme := self.parent.getscheme()
+	req, err := http.NewRequest("GET", scheme + "/cmd/get", nil)
+	if (start > 0){
+		if(end >= start){
+			req.Header.Add("range", fmt.Sprintf("bytes= %d-%d", start, end))
+		}
+	}
 	if err != nil{
 		panic(err)
 	}
