@@ -1,18 +1,19 @@
 package ddnwos
 
-import "fmt"
-import "net"
-import "net/http"
-import "strings"
-import "regexp"
-import "bytes"
-import "time"
-import "log"
-import "io/ioutil"
-import "os"
-import "io"
-import "strconv"
-import "net/http/httputil"
+import ("fmt"
+	"net"
+	"net/http"
+	"strings"
+	"regexp"
+	"bytes"
+	"time"
+	"log"
+	"io/ioutil"
+	"os"
+	"io"
+	"strconv"
+	"net/http/httputil"
+)
 
 
 //**************************** WosREST **************************************
@@ -27,6 +28,9 @@ type WosREST struct {
 	client *http.Client
 	resp *http.Response
 	badConn map[string]bool
+	buffered bool
+	integritycheck bool
+	debugtoggle bool
 }
 
 //*************** Alternative Overloading Functions *************************
@@ -47,6 +51,9 @@ func (self *WosREST) SimpleInit (ssl bool, hosts []string, port string) {
 	self.port = port
 	self.hosts_cycle = hosts
 	self.badConn = make(map[string]bool)
+	self.buffered = false
+	self.integritycheck = false
+	self.debugtoggle = false
 }
 
 func (self *WosREST) SimplePut(policy string, data string) string{
@@ -82,13 +89,15 @@ func (self *WosREST) getHost() string{
 	ip := self.hosts_cycle[nextIndex]
 	_, ok := self.badConn[ip]
 	if(ok){
-		//if badConn exists try again if there are more hosts to try
+		//If badConn exists try again if there are more hosts to try
 		if(len(self.badConn) < len(self.hosts_cycle)){
 			self.index = nextIndex
 			ip = self.getHost()
+		}else{
+			panic("No Good endpoints to use")
 		}
 	}else{
-		//if badConn does not exist
+		//If badConn does not exist, add to map of faulty nodes
 		if(self.CheckConnection(ip, self.port, 5) == false){
 			self.AvoidFaultyNodes(ip)
 			ip = self.getHost()
@@ -128,6 +137,7 @@ func (self *WosREST) CheckConnection(hostName string, portNum string, seconds in
 	return true
 }
 
+
 func (self *WosREST) debug(data []byte, err error) {
 	if err == nil {
 		fmt.Printf("%s\n\n", data)
@@ -135,6 +145,7 @@ func (self *WosREST) debug(data []byte, err error) {
 		log.Fatalf("%s\n\n", err)
 	}
 }
+
 
 
 //********************* Advanced Functions **************************************
@@ -169,12 +180,16 @@ func (self *WosREST) Put(policy string,
 		bmdata := ra.ReplaceAllString(amdata, "\"")
 		req.Header.Set("x-ddn-meta", bmdata)
 	}
-	self.debug(httputil.DumpRequestOut(req, true))
+	if(self.debugtoggle == true){
+		self.debug(httputil.DumpRequestOut(req, true))
+	}
 	resp, err := self.client.Do(req)
 	if err != nil{
 		panic(err)
 	}
-	self.debug(httputil.DumpResponse(resp, true))
+	if(self.debugtoggle == true){
+		self.debug(httputil.DumpResponse(resp, true))
+	}
         if(self.keepalive == false){
 		defer resp.Body.Close()
 	}
@@ -204,9 +219,8 @@ func (self * WosREST) Get(oid string,
 		panic(err)
 	}
 	req.Header.Add("x-ddn-oid", oid)
-        req.Header.Add("x-ddn-buffered", "false") //change later
-	req.Header.Add("x-ddn-integrity-check", "false") // change later		
-
+	req.Header.Add("x-ddn-buffered", strconv.FormatBool(self.buffered))
+	req.Header.Add("x-ddn-integrity-check", strconv.FormatBool(self.integritycheck))
 	if (decmode){
 		req.Header.Add("x-ddn-distributed-protection", "true")
 	}
@@ -233,7 +247,7 @@ func (self * WosREST) Get(oid string,
 	if err != nil {
 		log.Fatalf("ERROR: %s", err)
 	}
-	return string(body) //and metadata
+	return string(body)
 }
 
 func (self * WosREST) Delete(oid string,
@@ -306,10 +320,12 @@ func (self * WosREST) CreatePutStream(policy string, datalen int64, metadata str
 	return &putstream
 }
 
-func (self * WosREST) CreateGetStream(oid string) *GetStream{
+func (self * WosREST) CreateGetStream(oid string, buffered bool, integritycheck bool) *GetStream{
 	getstream := GetStream{
 		parent: self,
 		oid: oid,
+		buffered: buffered,
+		integritycheck: integritycheck,
 	}
 	return &getstream
 }
@@ -322,7 +338,7 @@ type PutStream struct {
 	policy string
 	datalen int64
         metadata string
-	//Do not set
+	//Do not set, set automatically
 	resp *http.Response
 }
 
@@ -334,8 +350,12 @@ func (self *PutStream) init (parent *WosREST, datalen int64) {
 func (self *PutStream) Putter (req *http.Request) string {
 	req.Header.Set("Content-type", "application/octet-stream")
 	req.Header.Set("x-ddn-policy", self.policy)
-	if (self.metadata != ""){
-		req.Header.Add("x-ddn-meta", self.metadata)
+	if(self.metadata != ""){
+		re := regexp.MustCompile("{}")
+		ra := regexp.MustCompile("'")
+		amdata := re.ReplaceAllString(self.metadata, "")
+		bmdata := ra.ReplaceAllString(amdata, "\"")
+		req.Header.Set("x-ddn-meta", bmdata)
 	}
 	resp, err := self.parent.client.Do(req)
 	if err != nil{
@@ -384,7 +404,9 @@ type GetStream struct {
 	parent *WosREST
 	handle string
 	oid string
-	//Do not set
+	buffered bool
+	integritycheck bool
+	//Do not set, set automatically
 	resp *http.Response
 }
 
@@ -395,8 +417,8 @@ func (self *GetStream) init (parent *WosREST, oid string) {
 
 func (self *GetStream) Getter (req *http.Request) io.ReadCloser {
 	req.Header.Add("x-ddn-oid", self.oid)
-        req.Header.Add("x-ddn-buffered", "false") //change later
-	req.Header.Add("x-ddn-integrity-check", "false") // change later		
+        req.Header.Add("x-ddn-buffered", strconv.FormatBool(self.buffered))
+	req.Header.Add("x-ddn-integrity-check", strconv.FormatBool(self.integritycheck))
 	resp, err := self.parent.client.Do(req)
 	if err != nil {
 		panic(err)
